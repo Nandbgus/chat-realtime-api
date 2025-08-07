@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Realtime Chat with Login</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 600px;
+            margin: 20px auto;
+        }
+
+        #chat {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            background-color: #f9f9f9;
+        }
+
+        .message {
+            display: flex;
+            margin: 5px 0;
+            padding: 5px 10px;
+            border-radius: 10px;
+            max-width: 75%;
+        }
+
+        .own {
+            justify-content: flex-end;
+        }
+
+        .own .bubble {
+            background-color: #dcf8c6;
+            text-align: right;
+        }
+
+        .other {
+            justify-content: flex-start;
+        }
+
+        .other .bubble {
+            background-color: #fff;
+        }
+
+        .bubble {
+            padding: 8px 12px;
+            border-radius: 15px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        input,
+        button {
+            padding: 8px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- LOGIN -->
+    <div id="loginUI">
+        <h2>Login</h2>
+        <input id="loginUsername" placeholder="Username" /><br />
+        <input id="loginPassword" placeholder="Password" type="password" /><br />
+        <button onclick="login()">Login</button>
+    </div>
+
+    <!-- CHAT UI -->
+    <div id="chatUI" style="display: none;">
+        <h3>Welcome, <span id="loggedUser"></span></h3>
+        <input id="chatId" placeholder="Enter Room ID" />
+        <button onclick="joinRoom()">Join Room</button>
+
+        <div id="roomSection" style="display: none;">
+            <h4>Room: <span id="roomName"></span></h4>
+            <div id="chat"></div>
+            <input id="messageInput" placeholder="Type your message" />
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        let socket;
+        let token = "";
+        let chatId = "";
+        let username = "";
+        const backendURL = "http://localhost:5000"; // Ganti jika perlu
+
+        function login() {
+            const uname = document.getElementById("loginUsername").value;
+            const pwd = document.getElementById("loginPassword").value;
+
+            fetch(`${backendURL}/api/users/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username: uname, password: pwd }),
+            })
+                .then((res) => res.json())
+                .then((data) => {
+                    if (data.success && data.data.token) {
+                        token = data.data.token;
+                        username = data.data.user.username;
+                        document.getElementById("loggedUser").textContent = username;
+                        document.getElementById("loginUI").style.display = "none";
+                        document.getElementById("chatUI").style.display = "block";
+
+                        connectSocket();
+                    } else {
+                        alert("Login gagal: " + data.message);
+                    }
+                })
+                .catch((err) => alert("Error saat login: " + err.message));
+        }
+
+        function connectSocket() {
+            socket = io(backendURL);
+
+            socket.on("connect", () => {
+                console.log("🔌 Connected:", socket.id);
+            });
+
+            socket.on("messageReceived", (msg) => {
+                const isOwn = msg.sender.username === username;
+                appendMessage(msg.sender.username, msg.content, isOwn);
+            });
+        }
+
+        function joinRoom() {
+            chatId = document.getElementById("chatId").value;
+            if (!chatId) return alert("Isi chat ID");
+
+            socket.emit("joinRoom", { chatId });
+            document.getElementById("roomName").textContent = chatId;
+            document.getElementById("roomSection").style.display = "block";
+        }
+
+        function sendMessage() {
+            const content = document.getElementById("messageInput").value;
+            if (!content || !chatId || !token) return alert("Data kurang");
+
+            fetch(`${backendURL}/api/messages/${chatId}`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ content }),
+            })
+                .then((res) => res.json())
+                .then((data) => {
+                    if (!data.success) {
+                        alert("❌ Gagal kirim pesan");
+                    } else {
+                        document.getElementById("messageInput").value = "";
+                    }
+                });
+        }
+
+        function joinRoom() {
+                chatId = document.getElementById("chatId").value;
+                if (!chatId) return alert("Isi chat ID");
+
+                socket.emit("joinRoom", { chatId });
+
+                document.getElementById("roomName").textContent = chatId;
+                document.getElementById("roomSection").style.display = "block";
+
+                // 🔽 Ambil chat lama
+                fetch(`${backendURL}/api/messages/${chatId}`, {
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success && data.data.length > 0) {
+                            document.getElementById("chat").innerHTML = ""; // kosongkan isi sebelumnya
+                            data.data.forEach(msg => {
+                                const isOwn = msg.sender.username === username;
+                                appendMessage(msg.sender.username, msg.content, isOwn);
+                            });
+
+                        }
+                    });
+            }
+
+
+     function appendMessage(sender, text, isOwn = false) {
+            const chatBox = document.getElementById("chat");
+
+            const msgText = isOwn ? text : `${sender}: ${text}`;
+
+            const p = document.createElement("p");
+            p.textContent = msgText;
+            p.style.textAlign = isOwn ? "right" : "left";
+            p.style.background = isOwn ? "#dcf8c6" : "#f1f0f0";
+            p.style.padding = "6px 10px";
+            p.style.borderRadius = "10px";
+            p.style.maxWidth = "70%";
+            p.style.display = "inline-block";
+            p.style.margin = "5px";
+
+            const wrapper = document.createElement("div");
+            wrapper.style.textAlign = isOwn ? "right" : "left";
+            wrapper.appendChild(p);
+            chatBox.appendChild(wrapper);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+
+        
+    </script>
+</body>
+
+</html>
