@@ -1,7 +1,7 @@
 import User from '../models/user.model.js';
 import bcrypt from 'bcryptjs';
 import { successResponse, errorResponse } from '../utils/response.js';
-import { generateToken } from '../utils/generateToken.js';
+import { generateTokens } from '../utils/generateToken.js';
 
 
 export const register = async (req, res) => {
@@ -26,27 +26,28 @@ export const register = async (req, res) => {
 
 
 export const login = async (req, res) => {
-  try {
-    const { username, password } = req.body;
+  const { username, password } = req.body;
 
+  try {
     const user = await User.findOne({ username });
-    if (!user) return errorResponse(res, 'User not found', 404);
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return errorResponse(res, 'Invalid credentials', 401);
+    if (!isMatch) return res.status(401).json({ message: 'Invalid credentials' });
 
-    const token = generateToken(user._id); // Pakai util
+    const { accessToken, refreshToken } = generateTokens(user._id);
 
-    return successResponse(res, {
-      token,
+    res.json({
+      success: true,
       user: {
-        id: user._id,
+        _id: user._id,
         username: user.username,
-        name: user.name,
       },
-    }, 'Login successful');
+      accessToken,
+      refreshToken,
+    });
   } catch (err) {
-    return errorResponse(res, err.message);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
 
